@@ -1,0 +1,262 @@
+---
+title: "STAT 679 Final Project Milestone 2"
+author: "Hari Krishna Boyapati"
+output:
+  html_document:
+    df_print: paged
+---
+# Loading required packages
+```{r}
+library('tidyverse')
+library("data.table")
+library(ggplot2)
+library(magrittr)
+library(plyr)
+library(ggrepel)
+library(dplyr)
+library(plyr)
+
+```
+
+Reading data
+```{r}
+big_mac <- fread("big-mac-source-data-v2.csv")
+head(big_mac,n = 10)
+length(unique(big_mac$name))
+View(big_mac)
+```       
+```{r}
+big_mac <- fread("big-mac-source-data-v2.csv") %>%
+    .[!is.na(local_price)] %>%                    # remove lines where the local price is missing
+    .[,GDP_local := as.numeric(GDP_local)] %>%    # convert GDP to a number
+    .[order(date, name)]   
+tail(big_mac,n = 10)
+```
+Cleaning data and removing null values
+```{r}
+any(is.na(big_mac))
+dim(big_mac)
+```
+```{r}
+big_mac<- na.omit(big_mac)
+any(is.na(big_mac))
+dim(big_mac)
+```
+
+Now we have clean data without any NA values
+We have data for 72 countires, we will focus on few countries which have a high gdp and poluplation.
+```{r}
+big_mac_countries = c('ARG', 'AUS', 'BRA', 'GBR', 'CAN', 'CHL', 'CHN', 'CZE', 'DNK',
+                      'EGY', 'HKG', 'HUN', 'IDN', 'ISR', 'JPN', 'MYS', 'MEX', 'NZL',
+                      'NOR', 'PER', 'PHL', 'POL', 'RUS', 'SAU', 'SGP', 'ZAF', 'KOR',
+                      'SWE', 'CHE', 'TWN', 'THA', 'TUR', 'ARE', 'USA', 'COL', 'CRI',
+                      'PAK', 'LKA', 'UKR', 'URY', 'IND', 'VNM', 'GTM', 'HND', 'VEN',
+                      'NIC', 'AZE', 'BHR', 'HRV', 'JOR', 'KWT', 'LBN', 'MDA', 'OMN',
+                      'QAT', 'ROU', 'EUZ')
+length(big_mac_countries)
+```
+The price of big mac for each country is listed in it's local currency, for uniformity, lets convert all the prices into single currencly, we will use USD as the base currency, since we have the exchange rate of each currency with respect to USD.
+```{r}
+big_mac$dollar_price<- big_mac$local_price/big_mac$dollar_ex
+tail(big_mac)
+```
+#now we have price of big mac in each country in dollars
+Now let's pick five base currencies : USD, EUR, GBP, JPY, CNY
+```{r}
+base_currencies = c('USD', 'EUR', 'GBP', 'JPY', 'CNY')
+```
+
+Big mac index in a simple method is basically ratio of price of Bigmac in local currency to the price in Base currency.
+lets calculate this by using group by
+filtering required columns
+```{r}
+big_mac_index = big_mac[
+    !is.na(dollar_price) & iso_a3 %in% big_mac_countries
+    ,.(date, iso_a3, currency_code, name, local_price, dollar_ex, dollar_price)]
+tail(big_mac_index)
+```
+Calculating big mac index
+```{r}
+for(currency in base_currencies) {
+big_mac_index[
+,                           
+(currency) :=              
+dollar_price /          
+.SD[currency_code == currency]$dollar_price - 1,                    
+by=date                     
+]
+}
+big_mac_index[, (base_currencies) := round(.SD, 5L), .SDcols=base_currencies]
+tail(big_mac_index)
+
+```
+Now we have the raw index agianst five base currencies we have picked.
+
+```{r}
+#fwrite(big_mac_index, 'C:/Users/harik/Desktop/Course work/STAT 679/Final Project Milestone 2/big_mac_raw_index.csv')
+```
+Now lets calculate the GDP adjucted index
+```{r}
+big_mac_gdp_data = big_mac[GDP_local > 0]
+head(big_mac_gdp_data)
+```
+
+```{r}
+regression_countries = c('ARG', 'AUS', 'BRA', 'GBR', 'CAN', 'CHL', 'CHN', 'CZE', 'DNK',
+                         'EGY', 'EUZ', 'HKG', 'HUN', 'IDN', 'ISR', 'JPN', 'MYS', 'MEX',
+                         'NZL', 'NOR', 'PER', 'PHL', 'POL', 'RUS', 'SAU', 'SGP', 'ZAF',
+                         'KOR', 'SWE', 'CHE', 'TWN', 'THA', 'TUR', 'USA', 'COL', 'PAK',
+                         'IND', 'AUT', 'BEL', 'NLD', 'FIN', 'FRA', 'DEU', 'IRL', 'ITA',
+                         'PRT', 'ESP', 'GRC', 'EST')
+# in 2021, we added a number of additional countries to the adjusted index
+regression_addons_2021 = c('ARE', 'CRI', 'LKA', 'UKR', 'URY', 'VNM', 'GTM', 'HND', 'NIC',
+                           'AZE', 'BHR', 'HRV', 'JOR', 'KWT', 'MDA', 'OMN', 'QAT', 'ROU',
+                           'SVK', 'SVN', 'LVA', 'LTU')
+big_mac_gdp_data = big_mac_gdp_data[iso_a3 %in% regression_countries |
+  (iso_a3 %in% regression_addons_2021 & date >= as.Date('2021-01-01'))
+]
+
+tail(big_mac_gdp_data)
+```
+
+
+Now we adjust the GDP with respect to Big mac price, which is done by dividing gdp in local currency by the exchange rate of dollars in terms of Big mac(price of big mac in local currency/price in the United states), this incorporates the purchasing power parity(ppp) in the perspective of big mac.
+
+```{r}
+big_mac_gdp_data %>%
+    .[,GDP_bigmac := GDP_local / (local_price / .SD[iso_a3=='USA']$local_price), by=date]
+tail(big_mac_gdp_data)
+```
+```{r}
+ggplot(big_mac_gdp_data, aes(x=GDP_bigmac, y=dollar_price)) +
+    facet_wrap(~date)+
+    geom_smooth(method = lm, color='tomato') +
+    geom_point(alpha=0.5) +
+    scale_x_continuous(labels=function(x) {round(x / 1000)}) +
+    labs(y="Dollar price", x="GDP per capita (Big Mac adjusted), $'000")
+```
+
+```{r}
+big_mac_gdp_data[
+    ,
+    `:=`(
+        adj_price=lm(dollar_price ~ GDP_bigmac) %>% predict
+#         adj_price_USD=lm(dollar_price ~ GDP_dollar) %>% predict
+    ),
+    by = date]
+tail(big_mac_gdp_data)
+```
+```{r}
+ggplot(big_mac_gdp_data, aes(x=GDP_bigmac, y=dollar_price)) +
+    facet_wrap(~date) +
+    geom_smooth(method = lm, color='tomato') +
+    geom_linerange(aes(ymin=dollar_price, ymax=adj_price), color='royalblue', alpha=0.3) +
+    geom_point(alpha=0.1) +
+    geom_point(aes(y=adj_price), color='royalblue', alpha=0.5) +
+    scale_x_continuous(labels=function(x) {round(x / 1000)}) +
+    labs(y="Dollar price", x="GDP per capita (Big Mac adjusted), $'000")
+```
+
+#Now we can calculate the adjusted big_mac index same as before
+
+```{r}
+big_mac_adj_index = big_mac_gdp_data[
+    !is.na(dollar_price) &
+    (
+        iso_a3 %in% regression_countries |
+        iso_a3 %in% regression_addons_2021 & date >= '2021-01-01'
+    ) &
+    iso_a3 %in% big_mac_countries
+    ,.(date, iso_a3, currency_code, name, local_price, dollar_ex, dollar_price, GDP_bigmac, adj_price)]
+
+for(currency in base_currencies) {
+    big_mac_adj_index[
+        ,                           # we don't want a subset, so our first argument is blank
+        (currency) :=               # we'll add a new column named for the base set
+            (                       # we divide the dollar price by the adjusted price to get
+                dollar_price / adj_price  # the deviation from our expectation by
+            ) /
+                                    # the same figure from the *base currency*'s rowa\
+            (
+                .SD[currency_code == currency]$dollar_price /
+                .SD[currency_code == currency]$adj_price
+            ) -
+            1,                      # one means parity (neither over- nor under-valued), so we subtract one
+                                    # to get an over/under-valuation value
+        by=date                     # and of course, we'll group these rows by date
+    ]
+}
+big_mac_adj_index[, (base_currencies) := round(.SD, 5L), .SDcols=base_currencies]
+
+tail(big_mac_adj_index)
+```
+```{r}
+#fwrite(big_mac_adj_index, 'C:/Users/harik/Desktop/Course work/STAT 679/Final Project Milestone 2/big_mac_adj_index.csv')
+```
+Merging both raw index and adjusted index into single dataframe
+```{r}
+big_mac_full_index = merge(big_mac_index, big_mac_adj_index,
+      by=c('date', 'iso_a3', 'currency_code', 'name', 'local_price', 'dollar_ex', 'dollar_price'),
+      suffixes=c('_raw', '_adjusted'),
+      all.x=TRUE
+     )
+tail(big_mac_full_index)
+```
+```{r}
+#fwrite(big_mac_full_index, 'C:/Users/harik/Desktop/Course work/STAT 679/Final Project Milestone 2/big_mac_full_index.csv')
+```
+
+```{r}
+df <- data.frame(matrix(ncol = 2, nrow = 0))
+colnames(df)<- c("country","inflation")
+
+for(i in regression_countries){
+  df_temp <- big_mac_adj_index %>% filter(iso_a3 == i)
+  temp <- df_temp$dollar_price[nrow(df_temp)]-df_temp$dollar_price[1]
+  df[nrow(df)+1,] = c(i,temp)
+}
+
+df1<-df[1:37,]
+df1$inflation<-as.numeric(df1$inflation)
+df1$inflation<-round(df1$inflation,2)
+plot<- ggplot(df1,aes(x = inflation, y = country)) +
+  geom_col() +
+  geom_text(aes(label = paste0(round(inflation, 1), "X")), hjust = -0.5) +
+  geom_vline(aes(xintercept = median(inflation), colour = "red")) +
+  theme(legend.position = "none") +
+  labs(x = "Inflation Rate over Time",
+       y = "Country",
+       title = "Inflation Growth on Price 2000-2020 (Dollar rate)") +
+  expand_limits(x = 3.5)
+plot
+
+
+```
+```{r}
+big_mac_adj_index %>% 
+  filter(date == max(date)) %>% 
+  select(name, dollar_price, adj_price) %>% ## prevent overlap data points
+  distinct_all() %>% 
+  ggplot(aes(adj_price, dollar_price)) +
+  geom_point() +
+  geom_smooth(method = lm) +
+  geom_text_repel(aes(label = name)) +
+  labs(x = "Dollar GDP per capita", 
+       y = "Dollar Price",
+       title = "GDP affects on Dollar Price of Big Mac Index")
+```
+
+
+```{r}
+latest_date = big_mac$date %>% max
+to_plot = big_mac_adj_index[date == latest_date]
+to_plot$name = factor(to_plot$name, levels=to_plot$name[order(to_plot$USD)])
+ggplot(to_plot[, over := USD > 0], aes(x=name, y=USD, color=over)) +
+    geom_hline(yintercept = 0) +
+    geom_linerange(aes(ymin=0, ymax=USD)) +
+    geom_point() +
+    coord_flip()
+```
+
+
+
