@@ -15,7 +15,10 @@ d3.queue()
   if (error) throw error;
  
   var extremeYears = d3.extent(data, d => d.year);
-  var currentYear = extremeYears[0];
+  var currentYear =  extremeYears[0];
+ 
+  console.log(extremeYears[0]);
+  console.log(typeof(currentYear));
   var currentDataType = d3.select('input[name="data-type"]:checked')
                           .attr("value");
   var geoData = topojson.feature(mapData, mapData.objects.countries).features;
@@ -30,17 +33,27 @@ d3.queue()
   drawMap(geoData, data, currentYear, currentDataType);
   //drawPie(data, currentYear);
   drawBar(data, currentDataType, "");
+  
+  
+  function getyear(){
+    var year=document.getElementById("year").value;
+    console.log(year);
+    console.log(typeof(year));
+    return(year)
+  }
  
   d3.select("#year")
       .property("min", currentYear)
       .property("max", extremeYears[1])
       .property("value", currentYear)
       .on("input", () => {
-        currentYear = +d3.event.target.value;
+        currentYear = getyear();//+d3.event.target.value;
         drawMap(geoData, data, currentYear, currentDataType);
-        drawPie(data, currentYear);
         highlightBars(currentYear);
+        
       });
+      
+  //console.log(currentYear);
  
   d3.selectAll('input[name="data-type"]')
       .on("change", () => {
@@ -139,12 +152,14 @@ function drawMap(geoData, climateData, year, dataType) {
     d.properties = countries.find(c => c.year === year) || { country: name };
   });
 
-  var colors = ["#ff00ff", "#00ff00", "#ffff00", "#f0f0f0","0f0f0f"];
+ var colors = ["#A0D2E7", "#81B1D5", "#3D60A7", "#26408B","#0F084B"];
 
-  var domains = {
+ var domains = {
     emissions: [1.1,7.6,25.5, 118,4e6],
     emissionsPerCapita: [0.63, 2.40, 3.11, 4.08,8.31]
   };
+  //var domains= document.getElementById("year");
+  
 
   var mapColorScale = d3.scaleLinear()
                         .domain(domains[dataType])
@@ -203,7 +218,6 @@ function createPie(width, height) {
        .style("text-anchor", "middle")
        .classed("pie-title", true);
 }
-
 function drawPie(data, currentYear) {
   var pie = d3.select("#pie");
  
