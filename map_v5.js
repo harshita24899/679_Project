@@ -1,3 +1,5 @@
+// link to visuvalization : https://harshitaaaaa.github.io/
+
 d3.queue()
   .defer(d3.json, "https://unpkg.com/world-atlas@1.1.4/world/50m.json")
   .defer(d3.csv, "https://raw.githubusercontent.com/harshitaaaaa/679_Project/main/final.csv", row => {
@@ -5,8 +7,8 @@ d3.queue()
  
     country: row.name,
     countryCode: row.name_code,
-    emissions: +row["local_price"],
-    emissionsPerCapita: +row["dollar_price"],
+    local_price: +row["local_price"],
+    dollar_price: +row["dollar_price"],
     region: row.name,
     year: row.year
   }
@@ -28,10 +30,8 @@ d3.queue()
   var height = 300;
  
   createMap(width, width * 4 / 5);
-  //createPie(width, height);
   createBar(width, height);
   drawMap(geoData, data, currentYear, currentDataType);
-  //drawPie(data, currentYear);
   drawBar(data, currentDataType, "");
   
   
@@ -75,7 +75,7 @@ d3.queue()
     var isArc = tgt.classed("arc");
     var dataType = d3.select("input:checked")
                      .property("value");
-    var units = dataType === "emissions" ? "" : "";
+    var units = dataType === "local_price" ? "" : "";
     var data;
     var percentage = "";
     if (isCountry) data = tgt.data()[0].properties;
@@ -95,7 +95,7 @@ d3.queue()
       tooltip
           .html(`
             <p>Country: ${data.country}</p>
-            <p>Prices: ${data.emissions}</p>
+            <p>Prices: ${data.local_price}</p>
             <p>Year: ${data.year || d3.select("#year").property("value")}</p>
             ${percentage}
           `)
@@ -107,11 +107,11 @@ function formatDataType(key) {
   return key[0].toUpperCase() + key.slice(1).replace(/[A-Z]/g, c => " " + c);
 }
 
-function getPercentage(d) {
+/*function getPercentage(d) {
   var angle = d.endAngle - d.startAngle;
   var fraction = 100 * angle / (Math.PI * 2);
   return fraction.toFixed(2) + "%";
-}
+}*/
 
 
 /******************************* MAP.JS ***********************************************/
@@ -130,7 +130,7 @@ function createMap(width, height) {
       //.legend(true);
 }
 
-function drawMap(geoData, climateData, year, dataType) {
+function drawMap(geoData, Data, year, dataType) {
   var map = d3.select("#map");
 
   var projection = d3.geoMercator()
@@ -146,7 +146,7 @@ function drawMap(geoData, climateData, year, dataType) {
   d3.select("#year-val").text(year);
 
   geoData.forEach(d => {
-    var countries = climateData.filter(row => row.countryCode === d.id);
+    var countries = Data.filter(row => row.countryCode === d.id);
     var name = '';
     if (countries.length > 0) name = countries[0].country;
     d.properties = countries.find(c => c.year === year) || { country: name };
@@ -155,8 +155,8 @@ function drawMap(geoData, climateData, year, dataType) {
  var colors = ["#A0D2E7", "#81B1D5", "#3D60A7", "#26408B","#0F084B"];
 
  var domains = {
-    emissions: [1.1,7.6,25.5, 118,4e6],
-    emissionsPerCapita: [0.63, 2.40, 3.11, 4.08,8.31]
+    local_price: [1.1,7.6,25.5, 118,4e6],
+    dollar_price: [0.63, 2.40, 3.11, 4.08,8.31]
   };
   //var domains= document.getElementById("year");
   
@@ -179,7 +179,7 @@ function drawMap(geoData, climateData, year, dataType) {
         var country = d3.select(this);
         var isActive = country.classed("active");
         var countryName = isActive ? "" : country.data()[0].properties.country;
-        drawBar(climateData, currentDataType, countryName);
+        drawBar(Data, currentDataType, countryName);
         highlightBars(+d3.select("#year").property("value"));
         d3.selectAll(".country").classed("active", false);
         country.classed("active", !isActive);
@@ -200,75 +200,7 @@ function graphTitle(str) {
   return str.replace(/[A-Z]/g, c => " " + c.toLowerCase());
 }
 
-/******************************* PIE.JS ***********************************************/
-/*
-function createPie(width, height) {
-  var pie = d3.select("#pie")
-                .attr("width", width)
-                .attr("height", height)
- 
-  pie.append("g")
-      .attr("transform", `translate(${width / 2}, ${height / 2 + 10})`)
-      .classed("chart", true);
- 
-  pie.append("text")
-       .attr("x", width / 2)
-       .attr("y", "1em")
-       .attr("font-size", "1.5em")
-       .style("text-anchor", "middle")
-       .classed("pie-title", true);
-}
-function drawPie(data, currentYear) {
-  var pie = d3.select("#pie");
- 
-  var arcs = d3.pie()
-               .sort((a,b) => {
-                 if (a.continent < b.continent) return -1;
-                 if (a.continent > b.continent) return 1;
-                 return a.emissions - b.emissions;
-               })
-               .value(d => d.emissions);
- 
-  var path = d3.arc()
-               .outerRadius(+pie.attr("height") / 2 - 50)
-               .innerRadius(0);
- 
-  var yearData = data.filter(d => d.year === currentYear);
-  var continents = [];
-  for (let i = 0; i < yearData.length; i++) {
-    var continent = yearData[i].country;
-    if (!continents.includes(continent)) {
-      continents.push(continent);
-    }
-  }
- 
-  var colorScale = d3.scaleOrdinal()
-                     .domain(continents)
-                     .range(["#ab47bc", "#7e57c2", "#26a69a", "#42a5f5", "#78989c"]);
- 
-  var update = pie
-                .select(".chart")
-                .selectAll(".arc")
-                .data(arcs(yearData));
- 
-  update
-    .exit()
-    .remove();
- 
-  update
-    .enter()
-      .append("path")
-      .classed("arc", true)
-      .attr("stroke", "#dff1ff")
-      .attr("stroke-width", "0.25px")
-    .merge(update)
-      .attr("fill", d => colorScale(d.data.continent))
-      .attr("d", path);
- 
-  pie.select(".pie-title")
-       .text(`Total emissions by continent and region, ${currentYear}`);
-}
-*/
+
 /******************************* BAR.JS ***********************************************/
 
 function createBar(width, height) {
@@ -343,7 +275,7 @@ function drawBar(data, dataType, country) {
       .duration(1000)
       .call(yAxis);
  
-  var axisLabel = dataType === "emissions" ?
+  var axisLabel = dataType === "local_price" ?
       "Local Prices" :
       "Dollar Prices";
  
